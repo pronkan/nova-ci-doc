@@ -151,6 +151,7 @@ Imagine a developer writing their pipeline in Python or TypeScript (the two king
 Here is what that could look like in practice:
 Python
 
+```python
 # pipeline.py
 
 # A plugin/service running as a sidecar or standalone in the K8s namespace
@@ -165,6 +166,7 @@ def run_migrations(workspace):
 @Step(name="Build_Binary", depends_on=["Run_Migrations"], mounts=["shared-pvc:/build"])
 def build_app(workspace):
     workspace.sh("go build -o /build/api-server main.go")
+```
 
 ⚙️ How the Magic Works (The Compiler Phase)
 
@@ -225,11 +227,13 @@ Matrix Testing via Decorators:
 You could pass variables into the decorators to instantly spin up matrix testing without writing repetitive YAML.
 Python
 
+```python
 # The compiler dynamically expands this into multiple parallel DAG branches
 @Service(name="database", image=f"postgres:{matrix.pg_version}")
 @Step(name="Run_Tests", depends_on=["database"])
 def run_tests(workspace, matrix):
     workspace.sh("make test")
+```
 
 The Sidecar vs. Standalone Optimization:
 This solves the exact "sidecar bloat" problem we talked about earlier! The Graph Compiler looks at the timeline of the DAG:
@@ -237,6 +241,7 @@ This solves the exact "sidecar bloat" problem we talked about earlier! The Graph
     Immediate Need (Sidecar): If Step 1 needs an AWS authentication plugin, the compiler injects it as a sidecar into the Step 1 pod so it's there at millisecond zero.
 
     Delayed Need (Standalone Pod): If Step 5 (which runs 10 minutes into the pipeline) needs a heavy integration-test database, the compiler doesn't put it in a sidecar. Instead, it instructs the K8s Coordinator: "Spin up this DB as a separate Pod in the namespace during Step 2. By the time Step 5 starts, it will be fully warmed up and ready."
+
 
 🎯 Next Step: The Plugin Connection
 
@@ -314,6 +319,7 @@ To make this powerful architecture usable, the developer's pipeline code needs t
 
 Python
 
+```python
 # Mode A: Ephemeral (Spins up a lightweight sidecar using the plugin's own Docker image)
 @Plugin(name="db", type="postgres", mode="ephemeral", proxy_port=5432)
 
@@ -329,6 +335,7 @@ def run_tests(workspace):
     # The sidecar plugin routes the TCP traffic to the correct destination!
     workspace.env["DATABASE_URL"] = "postgres://user:pass@localhost:5432/testdb"
     workspace.sh("npm run test:e2e")
+```
 
 2. The Universal gRPC Contract (The Plugin Brain)
 
@@ -340,6 +347,7 @@ For the CI agent-server to treat every plugin identically (whether it's a DB, a 
 
 Protocol Buffers
 
+```protobuf
 syntax = "proto3";
 package ci.plugin.v1;
 
@@ -356,6 +364,7 @@ service CIPlugin {
   // 4. Teardown: Cleanup Helm releases or revoke IAM credentials
   rpc Teardown(TeardownRequest) returns (TeardownResponse);
 }
+```
 
     Why this works: Because the plugin binary is tiny (distroless Go/Rust), it starts in milliseconds as a sidecar, establishes the gRPC connection with the main Agent, and then handles all the heavy lifting of checking if the massive Helm-deployed Postgres pod is actually ready to accept connections.
 
@@ -399,7 +408,7 @@ Ok, let's go one by one:
 
 3. Plugins should be used as objects in the pipelines as well, for example, I have Jfrog Artifactory plugin. I would like to call
 
-```Python
+```python
 import jfrog_artifactory_plugin
 
 
