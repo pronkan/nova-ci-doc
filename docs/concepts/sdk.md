@@ -87,6 +87,72 @@ def run_tests(workspace, matrix):
     workspace.sh("make test")
 ```
 
+### Matrix Testing in Golang
+
+While Python and TypeScript use dynamic runtime decorators for matrix expansion, Golang requires a different approach due to its statically typed and compiled nature. Because Go lacks runtime decorators, the Nova Go SDK leverages **Struct Tags and Reflection** to handle matrix expansion.
+
+**1. The Compilation (DAG Generation):** The `nova plan` hybrid compiler reads the matrix dimensions from the struct tags, calculates the Cartesian product, and generates parallel `Step` nodes in the ArangoDB graph *before* execution.
+**2. The Imperative Injection:** The Nova SDK injects a `nova.Matrix` object into the executing Go method so the isolated Kubernetes pod knows exactly which permutation it is responsible for.
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"github.com/nova-ci/sdk-go/nova"
+)
+
+// 1. Define the Matrix Dimensions
+// These fields will be expanded into a Cartesian product by the compiler.
+type TestMatrix struct {
+	GoVersion []string `nova:"matrix"`
+	DBVersion []string `nova:"matrix"`
+}
+
+// 2. The Declarative Shell
+// We define our pipeline structure and attach the matrix using struct tags.
+type BackendPipeline struct {
+	// The Plugin adapter (will be dynamically scheduled for each matrix branch)
+	DB nova.Plugin `nova:"plugin, provider=postgres, mode=auto"`
+
+	// We attach the matrix struct to the step
+	Integration TestMatrix `nova:"step, name=integration-tests"`
+}
+
+// 3. The Imperative Core
+// We use a pointer receiver to bind the execution logic.
+// Notice the injected `nova.Matrix` object, which gives this specific pod its assigned variables.
+func (p *BackendPipeline) IntegrationTests(ctx context.Context, ws *nova.Workspace, m nova.Matrix) error {
+	// The SDK injects the specific permutation for this execution pod
+	goVer := m.Get("GoVersion")
+	dbVer := m.Get("DBVersion")
+
+	ws.Log().Infof("Running matrix branch: Go %s | DB %s", goVer, dbVer)
+
+	// Dynamically configure the plugin proxy port or environment based on the matrix variable
+	dbProxyPort := p.DB.GetProxyPort(ctx, map[string]string{"version": dbVer})
+	dbUrl := fmt.Sprintf("postgres://user:pass@localhost:%d/testdb", dbProxyPort)
+
+	// Execute the code using the specific matrix variables
+	cmd := fmt.Sprintf("GO_VERSION=%s DB_URL=%s make test-e2e", goVer, dbUrl)
+	return ws.Exec(cmd)
+}
+
+func main() {
+	// 4. The Compiler Entrypoint
+	// Populates the matrix values for the dry-run compilation
+	pipeline := &BackendPipeline{
+		Integration: TestMatrix{
+			GoVersion: []string{"1.20", "1.21"},
+			DBVersion: []string{"14", "15"},
+		},
+	}
+	
+	nova.Execute(pipeline)
+}
+```
+
 This capability ensures that developers can review their expanded matrix dependencies safely within the Phantom Graph dry-run before any actual pod execution begins.
 
 ## Key Benefits

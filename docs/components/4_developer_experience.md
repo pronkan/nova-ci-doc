@@ -21,6 +21,14 @@ Unlike legacy CI systems that are fiercely repo-centric (restricting pipelines t
 *   **Secure GitOps References:** The allowed universe of cross-repositories is defined safely by platform teams via the `NovaRepository` CRD. 
 *   **Unified Workspace:** The pipeline execution can pull source code from `repo-A` and integration tests from `repo-B` natively via the SDK (`workspace.checkout_repo(...)`), removing complex git-clone bash scripts.
 
+## Matrix Testing & Dynamic Expansion
+
+To solve the friction of testing against multiple environments or configurations, the Nova Graph Compiler supports dynamic DAG expansion at compile-time via matrix configurations.
+
+*   **Dynamic Parallelism:** When the Coordinator parses an execution script containing matrix variables (e.g. testing against Postgres 13, 14, 15), it dynamically generates multiple parallel branches in the ArangoDB execution graph.
+*   **Language-Specific Implementation:** Python and TypeScript use dynamic runtime decorators to pass matrices. Golang utilizes Struct Tags and Reflection to calculate Cartesian products and inject those constraints at compile-time.
+*   **Imperative Injection:** The Nova SDK securely injects an active iteration constraint instance (`nova.Matrix`) into each unique spawned Kubernetes pod so that it executes perfectly on target.
+
 ## CLI & Validation (`nova plan`)
 
 Before pushing code, developers can validate their pipelines locally using the Nova CLI (`nova plan`).
