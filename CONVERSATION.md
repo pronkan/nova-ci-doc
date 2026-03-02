@@ -399,19 +399,20 @@ Ok, let's go one by one:
 
 3. Plugins should be used as objects in the pipelines as well, for example, I have Jfrog Artifactory plugin. I would like to call
 
-
+```Python
 import jfrog_artifactory_plugin
 
 
 repo = jfrog_artifactory_plugin.getCreateRepository("name")
 
 repo.push("jar_name", snapshot=true)
-
+```
 
 Idea is that plugin developers can add plugin representative libraries that could be imported in the pipeline code and they will natively "know" how to talk to the plugin (plugin will instruct agent what to inject, how, where).
 
 It's like
 
+```Python
 import ci_postgres_plugin
 
 
@@ -429,7 +430,7 @@ credentials = ci_postgres_plugin.postgress.getCredentials
 workspace.env["DATABASE_URL"] = f"postgres://{credentials.user}:{credentials.pass}@localhost:5432/testdb"
 
 workspace.sh("npm run test:e2e")
-
+```
 4. Coordinator should decide, unless instructed explicitly, whether plugin should be sidecar or standalone deployed helm with additionally provided options.
 
 It's up to the plugin developer to decide additional options plugin should recieve, so modes could be:
@@ -936,18 +937,14 @@ Funny, first, analogy with space is warming, I think that project code name Nova
 
 Regarding Nexus jobs - that makes sense, we can define job in CR by referencing k8s configMap or directly like:
 
+```yaml
 spec:
-
 scheduled:
-
 cron: "*******"
-
 project: event-processing
-
 job: |
-
-<job code here in Python, TS or Go>
-
+    <job code here in Python, TS or Go>
+```
 
 And checkout actions in Step(s) can perform checkout of multiple repos, tests, etc.
 
@@ -977,7 +974,7 @@ How it looks in the YAML/Code:
 
 Instead of hardcoding URLs, the platform engineering team defines the allowed universe of repositories via GitOps (using ArgoCD or Flux):
 YAML
-
+```yaml
 # A registered entity in the cluster
 apiVersion: nova.ci/v1
 kind: NovaRepository
@@ -986,13 +983,16 @@ metadata:
 spec:
   url: "https://github.com/company/shared-go-tooling.git"
   allowed_branches: ["main", "v1.*"]
+```
 
 Then, in the developer's Python/TS/Go pipeline code (or the NovaJob CR), they just reference the entity:
 Python
 
+```python
 # The pipeline simply requests the registered entity
 tools = workspace.checkout_repo(nova_ref="shared-go-tooling", ref="main")
 workspace.sh(f"{tools.path}/run-security-scan.sh")
+```
 
 🌌 The "Cosmic Scale" Graph Traceability
 
@@ -1203,6 +1203,7 @@ Developer SDKs    Python, TypeScript, Go    The languages developers use to writ
 Here is the Mermaid graph to render in your markdown viewer in the morning. It visualizes the strict boundaries, the event flow, and the telemetry loop.
 Code snippet
 
+```mermaid
 graph TD
     %% External Inputs
     Developer[Developer] -->|nova plan / UI| API_Gateway
@@ -1263,6 +1264,7 @@ graph TD
     
     class Control Plane secure;
     class Execution Namespace ephemeral;
+```
 
 🌅 Morning Brainstorming Options
 
@@ -1354,6 +1356,7 @@ Because of this change, the Kubernetes Network Policy for the ci-run-1234 namesp
 Your idea to manage these exceptions via a K8s Custom Resource is exactly how enterprise platforms handle governance. A platform engineering team could define a global policy, but allow specific jobs to request elevated access.
 YAML
 
+```yaml
 apiVersion: nova.ci/v1
 kind: NovaPolicy
 metadata:
@@ -1365,6 +1368,7 @@ spec:
     allow_privileged_containers: false
   telemetry:
     max_log_rate_kbps: 5000 # The Controller enforces this!
+```
 
 If a specific deployment job needs K8s API access to deploy an application, the NovaJob can reference an override policy, which the Coordinator evaluates before provisioning the namespace.
 🎯 What's our next target?
@@ -1497,6 +1501,7 @@ Here is the updated architectural diagram for Project Nova.
 This version explicitly visualizes the "Zero-Trust" security boundaries, the Layer 4/Layer 7 network policies, and the strict communication choke-points where the Controller acts as the "Governor" for the Agent.
 Code snippet
 
+```mermaid
 flowchart TD
     %% External World
     subgraph External [The Outside World]
@@ -1582,6 +1587,7 @@ flowchart TD
     class ExecNamespace ephemeral;
     class Policies policy;
     class External external;
+```
 
 🔍 Key Visual Updates Explained:
 
@@ -1604,6 +1610,7 @@ This is a perfect way to visualize the exact lifecycle of a pipeline in Project 
 Here is the Mermaid diagram illustrating the Graph Compilation and Execution Flow:
 Code snippet
 
+```mermaid
 flowchart TD
     %% Phase 1: Definition & Compilation
     subgraph Phase1 [1. Definition & Compilation]
@@ -1680,6 +1687,7 @@ flowchart TD
     class RunNode,StageNode,Step1Node,Step2Node,PluginNode graphNode;
     class GraphDB,NATS,S3 database;
     class Controller,Agent,UserLogic execution;
+```
 
 🗺️ Walking Through the Execution Flow
 
@@ -1713,6 +1721,7 @@ Here is the drafted Protobuf schema for Project Nova.
 This contract must handle both "Passive Plugins" (like a Postgres database that just needs to expose a proxy port) and "Active Plugins" (like a Terraform runner or API interpreter that needs to execute commands and stream outputs).
 Protocol Buffers
 
+```protobuf
 syntax = "proto3";
 package nova.plugin.v1;
 
@@ -1799,12 +1808,14 @@ message TeardownRequest {}
 message TeardownResponse {
   bool success = 1;
 }
+```
 
 🛡️ 2. The Governor Contract (controller.proto)
 
 This service runs on the Controller pod. The Agent uses this to request elevated resources (Secrets) and to safely dump its telemetry, ensuring the Agent never talks to the central K8s cluster directly.
 Protocol Buffers
 
+```protobuf
 syntax = "proto3";
 package nova.controller.v1;
 
@@ -1874,6 +1885,7 @@ message StepStatusRequest {
 message StepStatusResponse {
   bool acknowledged = 1;
 }
+```
 
 💡 How this solves your "Universality" requirement:
 
@@ -2094,6 +2106,7 @@ Here is how we decouple the brains from the brawn:
 Inside the Coordinator's core logic, we define exactly what we need the database to do, completely ignoring how it does it:
 Go
 
+```go
 // The Coordinator only knows this exists. It has no idea what Neo4j or ArangoDB is.
 type GraphStore interface {
     SavePipelineRun(ctx context.Context, run PipelineRun) error
@@ -2103,6 +2116,7 @@ type GraphStore interface {
 type MessageQueue interface {
     PublishEvent(ctx context.Context, topic string, payload []byte) error
 }
+```
 
 2. Build the "Adapters" (The Translators)
 We write separate Go packages for specific technologies:
@@ -2297,6 +2311,7 @@ The Coordinator doesn't just check syntax. It builds the full Graph DAG in memor
 The CLI prints a beautiful, colorized terminal output (similar to Terraform) showing exactly what will happen:
 Plaintext
 
+```
 🚀 Nova Plan complete. DAG compiled successfully.
 
 [+] Stage 1: Lint & Security (Parallel)
@@ -2310,6 +2325,7 @@ Plaintext
 ✅ 0 Circular Dependencies. 
 ✅ All cluster resources verified.
 Ready to execute.
+```
 
 4. The Local Execution (nova run --local) - Optional
 If they want to actually run the code, they can execute nova run --local. Because the Agent is just a Go binary, the CLI can spin up the Agent locally on their laptop (using Docker for Mac/Windows to simulate the sandbox), pull the plugins, and execute the exact DAG without ever touching the cloud!
@@ -2361,10 +2377,12 @@ Your design for the policy overrides is the exact right way to handle platform g
     The Job Override (NovaJob): If a specific infrastructure-deployment pipeline actually needs to talk to the K8s API, the developer specifies it in their job definition:
     YAML
 
+    ```yaml
     spec:
       policy_override:
         allow_k8s_api: true
         allow_internal_push: true
+    ```
 
     The Gatekeeper: When the Coordinator plans the job, it sees the override request. It can automatically approve it (if the repo is trusted) or require a manual GitOps approval, and then dynamically inject the relaxed K8s/Istio policies for just that one specific ci-run-1234 namespace.
 
@@ -2541,6 +2559,7 @@ Project Nova is a strictly typed, graph-backed, Zero-Trust CI/CD orchestration e
 When building with operator-sdk, you define your types in Go, which generates the OpenAPI schemas. For AI agents to understand our data model immediately, here is the JSON representation of our two foundational configuration CRDs: NovaRepository (for SLSA supply chain security) and NovaPolicy (for security governance).
 JSON
 
+```json
 {
   "apiVersion": "apiextensions.k8s.io/v1",
   "kind": "CustomResourceDefinition",
@@ -2599,9 +2618,11 @@ JSON
     ]
   }
 }
+```
 
 JSON
 
+```json
 {
   "apiVersion": "apiextensions.k8s.io/v1",
   "kind": "CustomResourceDefinition",
@@ -2656,6 +2677,7 @@ JSON
     ]
   }
 }
+```
 
 🔌 The Ecosystem & Plugin Philosophy
 
@@ -2724,7 +2746,7 @@ type NovaEvent struct {
     Timestamp     time.Time         `json:"timestamp"`
     RawPayloadRef string            `json:"raw_payload_ref,omitempty"` // Pointer to S3 for deep audits
 }
-
+```
 
 ---
 
@@ -2735,8 +2757,7 @@ type NovaEvent struct {
 
 ## 1. Hexagonal Ports (Interfaces)
 The Coordinator's business logic has zero dependencies on Neo4j, ArangoDB, or NATS. It only interacts with these strict Go interfaces (Ports). 
-
-
+```
 
 ```go
 package core
@@ -2756,12 +2777,14 @@ type EventBroker interface {
     PublishAction(ctx context.Context, topic string, payload []byte) error
     SubscribeToEvents(ctx context.Context, topic string, handler func(event *NovaEvent)) error
 }
+```
 
 2. DAG Compilation Logic
 
 When the Coordinator receives a NovaEvent from the EventBroker, it pulls the pipeline code (Go/TS/Python) and compiles it into a DAG struct. This happens before any Kubernetes namespaces are provisioned.
 Go
 
+```go
 package dag
 
 import "errors"
@@ -2816,7 +2839,7 @@ func (d *DAG) TopologicalSort() ([]string, error) {
     }
     return order, nil // Returns the exact execution order
 }
-
+```
 
 ---
 
@@ -2862,6 +2885,7 @@ Because NATS JetStream is the central nervous system connecting the Gateway, Coo
   },
   "required": ["command_id", "run_id", "node_id", "action", "payload"]
 }
+```
 
 🎯 Next Implementation Phase
 
@@ -2933,13 +2957,12 @@ func AgentAuthInterceptor(expectedNamespace string) grpc.UnaryServerInterceptor 
         return handler(ctx, req)
     }
 }
-
+```
 
 ---
 
 ### 📄 File 6: `06_ahocorasick_masking.md`
 
-```markdown
 # Real-Time Secret Masking (Aho-Corasick)
 
 ## 1. Component Role
@@ -3002,19 +3025,16 @@ func (sm *SecretMasker) MaskPayload(payload []byte) []byte {
 
     return masked
 }
-
+```
 
 ---
 
 ### 📄 File 7: `07_supervisor_agent.md`
 
-```markdown
 # The Agent Supervisor & Log Interception
 
 ## 1. Component Role
 The Agent binary is the entrypoint (`PID 1`) of the execution container. It spawns the user's pipeline script as a child process. It intercepts `stdout` and `stderr` directly from the OS pipes so that the Kubernetes container runtime (`/dev/stdout`) never sees the raw output.
-
-
 
 ## 2. Go Implementation: The Execution Wrapper
 
@@ -3070,7 +3090,7 @@ func streamLogsToController(pipe io.Reader, logType pb.LogType, client pb.Contro
     }
     stream.CloseSend()
 }
-
+```
 
 ---
 
@@ -3155,6 +3175,7 @@ export class BackendPipeline {
 // Entrypoint for the Nova Agent
 import { NovaEngine } from '@nova-ci/sdk';
 NovaEngine.run(BackendPipeline);
+```
 
 2. How it works under the hood
 
@@ -3167,7 +3188,6 @@ NovaEngine.run(BackendPipeline);
 
 ### 📄 File 9: `09_nova_sdk_python.md`
 
-```markdown
 # Nova SDK: Python Implementation
 
 ## 1. The Functional Decorator Approach
@@ -3209,13 +3229,12 @@ def train_model():
 
 if __name__ == "__main__":
     p.execute()
-
+```
 
 ---
 
 ### 📄 File 10: `10_nova_sdk_go.md`
 
-```markdown
 # Nova SDK: Golang Implementation
 
 ## 1. The Builder Pattern Approach
@@ -3277,7 +3296,7 @@ func main() {
     // 4. Start the engine (handles both dry-run JSON generation and actual execution)
     p.Execute()
 }
-
+```
 
 ---
 
@@ -3313,6 +3332,7 @@ Here is how we elegantly implement @Stage encapsulation across the three SDKs.
 In TypeScript, we can use classes to represent Stages, and aggregate them into the main Pipeline. This provides incredible modularity, allowing teams to share reusable Stage classes across different pipelines!
 TypeScript
 
+```typescript
 import { Pipeline, Stage, Step, Workspace } from '@nova-ci/sdk';
 
 // 1. Define the Stage as an encapsulating class
@@ -3349,12 +3369,14 @@ export class BuildStage {
 export class ProdPipeline {}
 
 NovaEngine.run(ProdPipeline);
+```
 
 📄 File 9 (Updated): 09_nova_sdk_python.md
 
 Python developers love context managers (with statements). They visually indent the code, creating a beautiful, readable hierarchy that perfectly mirrors the DAG structure.
 Python
 
+```python
 from nova_sdk import Pipeline, Workspace
 
 p = Pipeline(name="Data-Processing")
@@ -3380,12 +3402,14 @@ with p.stage("Load-Warehouse", depends_on=[etl_stage]) as load_stage:
 
 if __name__ == "__main__":
     p.execute()
+```
 
 📄 File 10 (Updated): 10_nova_sdk_go.md
 
 In Go, we expand the Builder pattern. The Pipeline creates Stages, and the Stages create Steps. This keeps the strict type safety Go developers expect.
 Go
 
+```go
 package main
 
 import "github.com/nova-ci/sdk-go/nova"
@@ -3426,6 +3450,7 @@ func main() {
 
     p.Execute()
 }
+```
 
 🧠 How the Graph DB handles this:
 
