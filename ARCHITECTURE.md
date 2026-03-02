@@ -23,6 +23,7 @@ The architecture is broadly divided into two domains:
 *   **Telemetry Router:** A daemon that consumes logs and events from NATS, writes graph state to ArangoDB, and manages log aggregation (S3) and live UI streaming.
 *   **Controller (Governor):** The local sandbox manager enforcing identity, telemetry throttling, and secret masking.
 *   **Agent (Worker):** Executes user code, utilizing a Supervisor Pattern to intercept and forward logs securely via gRPC to the Controller.
+*   **Nexus Nodes:** Specialized graph nodes that orchestrate complex, multi-repository workflows, breaking out of standard single-repo CI limitations.
 
 For a detailed breakdown of each domain, refer to the following sub-documents:
 *   [1. Control Plane](1_control_plane.md)

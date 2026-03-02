@@ -68,6 +68,27 @@ func main() {
 }
 ```
 
+## Matrix Testing & Dynamic Expansion
+
+To solve the friction of testing against multiple environments or configurations, the Nova Graph Compiler supports dynamic DAG expansion at compile-time via matrix configurations.
+
+Instead of writing repetitive YAML blocks or bash loops, developers can pass variables (matrices) directly into their SDK decorators or struct tags.
+
+### Dynamic Parallelism
+When the Coordinator parses an execution script containing matrix variables, it dynamically generates multiple parallel branches in the ArangoDB execution graph. This translates a single `@Step` definition into *N* distinct parallel components natively rendered in the graph.
+
+```python
+# The compiler dynamically expands this into multiple parallel DAG branches
+@Service(name="database", image=f"postgres:{matrix.pg_version}")
+
+@Step(name="Run_Tests", depends_on=["database"])
+def run_tests(workspace, matrix):
+    # This step will spawn in parallel for every version defined in the triggering matrix
+    workspace.sh("make test")
+```
+
+This capability ensures that developers can review their expanded matrix dependencies safely within the Phantom Graph dry-run before any actual pod execution begins.
+
 ## Key Benefits
 1. **Type Safety & Autocomplete:** Full IDE support for plugins and workspace methods.
 2. **Local DAG Validation:** Developers can catch circular dependencies and syntax errors locally via `nova plan` before waiting for a K8s pod to spin up.

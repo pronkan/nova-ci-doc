@@ -13,6 +13,14 @@ Pipelines are structured as code rather than YAML, utilizing native SDKs in **Ty
     *   **Step:** An individual unit of work mapping to a specific function or method (defined via `@Step`).
 *   **Workspace Object:** The SDK injects a `Workspace` object into step functions. This object abstracts away the complex underlying interactions (gRPC streams, volume mounts), providing developers with a simple API to read/write artifacts, access scoped secrets, and emit metrics.
 
+## Multi-Repo "Nexus" Jobs
+
+Unlike legacy CI systems that are fiercely repo-centric (restricting pipelines to the repository they reside in), Nova introduces the concept of **Nexus Jobs**. 
+
+*   **Cross-Repository Orchestration:** Developers can define a single pipeline that acts as a Nexus, orchestrating checkouts, builds, and tests across multiple different repositories within a single unified pipeline run.
+*   **Secure GitOps References:** The allowed universe of cross-repositories is defined safely by platform teams via the `NovaRepository` CRD. 
+*   **Unified Workspace:** The pipeline execution can pull source code from `repo-A` and integration tests from `repo-B` natively via the SDK (`workspace.checkout_repo(...)`), removing complex git-clone bash scripts.
+
 ## CLI & Validation (`nova plan`)
 
 Before pushing code, developers can validate their pipelines locally using the Nova CLI (`nova plan`).
