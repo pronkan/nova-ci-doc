@@ -2,7 +2,9 @@
 
 Project Nova utilizes Kubernetes Custom Resource Definitions (CRDs) as the foundational building blocks for its execution model, enabling true GitOps-native configuration.
 
-## `NovaJob` CRD & Multi-Repo Nexus Jobs
+## Core Configuration CRDs
+
+## `NovaJob` CRD (Multi-Repo Nexus Jobs)
 
 In legacy CI systems, pipelines are fiercely "Repo-Centric." If you need to run an integration test that spans your `frontend-ui`, `billing-api`, and `auth-service` repositories, you usually have to write a fragile script that clones them using hardcoded SSH keys.
 
@@ -70,8 +72,84 @@ def multi_repo_integration():
 This is where the "Cosmic Auditability" shines.
 
 When the Coordinator compiles this DAG, it recognizes that this is a `Nexus` job utilizing multiple inputs. It writes the exact provenance to ArangoDB. If an auditor looks at this `PipelineRun` node, they will see multiple incoming `[:CLONED]` edges.
+Beyond the `NovaJob`, Project Nova uses several other Custom Resources to manage the supply chain, event routing, and cluster security.
 
-A single Cypher/AQL query can instantly answer: *"Which integration test runs consumed both `billing-api` (commit `a1b2`) AND `frontend-ui` (commit `c3d4`)?"*
+### `NovaRepository` CRD (Supply Chain Security)
+Instead of hardcoding Git URLs in pipelines, platform engineering teams define the allowed universe of repositories globally. This ensures SLSA Level 4 compliance by preventing developers from cloning unvetted code.
 
----
-*(Additional CRDs like `NovaRepository`, `NovaTrigger`, and `NovaPolicy` work in tandem with the `NovaJob` to route events and enforce governance).*
+```yaml
+# A registered entity in the cluster
+apiVersion: nova.ci/v1
+kind: NovaRepository
+metadata:
+  name: core-app
+spec:
+  url: "https://github.com/org/core-app.git"
+  provider: "github" # github, gitlab, bitbucket, internal
+  allowedBranches: ["main", "release/*"]
+  credentialsRef:
+    secretName: "github-pat"
+    namespace: "ci-system"
+  triggers:
+    - event: "push"
+      branch: "main"
+      job: "deploy-prod"
+```
+
+### `NovaTrigger` CRD (The Routing Engine)
+Instead of placing "if/then" routing logic inside the pipeline code, `NovaTrigger` objects dictate exactly what events trigger which jobs. They support path filtering natively, giving Nova a massive "Monorepo Superpower."
+
+```yaml
+apiVersion: nova.ci/v1
+kind: NovaTrigger
+metadata:
+  name: trigger-backend-tests
+spec:
+  repository: "nova-ref/backend-api"
+  events: ["pull_request", "push"]
+  filters:
+    branches: ["main", "feature/*"]
+    paths: ["src/**/*.go", "go.mod"] # Only trigger if Go files changed!
+    labels: ["requires-testing"]
+  action:
+    targetJob: "nova-ref/backend-integration-job"
+```
+
+### `NovaPolicy` CRD (Security Governance & Backpressure)
+To maintain Zero-Trust isolation, Nova heavily restricts ephemeral Agent namespaces. The `NovaPolicy` CRD defines these Default-Deny overrides and sets limits on how much telemetry an Agent can emit before the local Controller throttles it to protect the message bus.
+
+```yaml
+apiVersion: nova.ci/v1
+kind: NovaPolicy
+metadata:
+  name: global-default-policy
+spec:
+  type: Global
+  network:
+    allow_k8s_api: false
+    allow_privileged_containers: false
+  telemetry:
+    max_log_rate_kbps: 5000 # The Controller enforces this!
+  ttls:
+    maxNamespaceDuration: "2h"
+    artifactRetention: "30d"
+```
+
+## Graph Data Models (`ArangoDB`)
+
+Project Nova translates these declarative CRDs into a highly interconnected Graph Database for real-time orchestration and auditing.
+
+### Key Nodes
+- **`PipelineRun`**: Represents a single execution instance of a DAG.
+- **`Stage / Step`**: Sub-units of the execution graph.
+- **`Plugin`**: A gRPC adapter definition (e.g., `PostgresAdapter`).
+- **`Service`**: A physical pod or external resource managed by a plugin.
+- **`Artifact`**: A cryptographically sealed binary or image.
+- **`User`**: OIDC-authenticated entity who triggered or reviewed a run.
+
+### Key Edges
+- **`DEPENDS_ON`**: Defines the DAG order between Steps.
+- **`PRODUCED`**: Links a Step to an Artifact.
+- **`CONSUMED`**: Links a Step to an Artifact (provenance).
+- **`DEPLOYED_TO`**: Links an Artifact to a Stage.
+- **`INTERACTED_WITH`**: Links a User to a manual sign-off node.
