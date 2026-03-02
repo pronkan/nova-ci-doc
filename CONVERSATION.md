@@ -500,6 +500,7 @@ This is my favorite part of your latest iteration. By allowing developers to imp
 When a developer writes:
 Python
 
+```python
 import ci_postgres_plugin
 
 # Standard options (name, mode) + Dynamic options (**kwargs like standalone_db=True)
@@ -510,6 +511,7 @@ def run_tests(workspace):
     # The SDK abstracts the gRPC call!
     creds = ci_postgres_plugin.get_credentials("db") 
     workspace.env["DATABASE_URL"] = f"postgres://{creds.user}:{creds.password}@localhost:5432/testdb"
+```
 
 What happens under the hood:
 The ci_postgres_plugin library isn't actually spinning up Postgres. It is essentially a lightweight gRPC client. When get_credentials() is called, the Python code makes a local gRPC call to the Agent running the pod, which routes it to the sidecar/proxy, which pulls the real credentials securely from the Controller. It bridges the gap between the code world and the infrastructure world seamlessly.
@@ -555,6 +557,7 @@ Second part must provision Terraform infrastructure, using assumed role credenti
 
 So I don't mount workdir from PVC, my Docker image already have everything I need, so workspace now by default $HOME(/home/tf), I simply execute inside with workspace.sh("") or, if I have Terraform plugin that will find terraform executable and will intercept and handle outputs, errors, state:
 
+```python
 awesome_plan = "awesome_terraform_plan"
 
 terraform.init("-upgrade", "-backend-config=\"my-artifact-bucket\"" f"-backend-config=\"key=development/us-east-1/lambda/{build.name}/{build.branch_name}/terraform.tfstate\"", "-backend-config=\"region=us-east-1\"")
@@ -564,6 +567,7 @@ terraform.plan("-o", awesome_plan)
 Send it as artifact for review into S3, like aws.s3.cp(awesome_plan, f"s3://my-artifact-bucket/ci/builds/{build.long_id}/infrastructure/{awesome_plan}")
 
 terraform.apply("-auto-approve")
+```
 
 I see it something like that. Agent should be able to execute inside it's container sidecar all necessary actions.
 ## Brainstormer
@@ -724,6 +728,7 @@ Here is what that beautiful, strictly-typed Go SDK would look like:
 🐹 The Golang Pipeline Experience
 Go
 
+```go
 package main
 
 import (
@@ -773,6 +778,7 @@ func main() {
     // to parse the struct tags and build the JSON DAG to send to the Coordinator.
     ci.Execute(&BackendPipeline{})
 }
+```
 
 ⚙️ How the Go "Compiler" Works
 
