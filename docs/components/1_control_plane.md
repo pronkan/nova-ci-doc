@@ -21,6 +21,11 @@ The brain of the system, designed as a highly available Kubernetes Operator mana
 *   **Dry Runs (`nova plan`):** Supports \"Phantom Graph\" generation for CLI users conducting local dry-runs, allowing them to validate the DAG without running code.
 *   **ChatOps Integration:** Manages pipeline timeouts, GC triggers, and routes Human-in-the-Loop interaction requests (via the `Interaction` Node).
 
+### The `NovaTrigger` CRD (The Routing Engine)
+Instead of putting messy "if/then" bash logic inside pipeline code, Nova uses the `NovaTrigger` K8s CRD to tell the system exactly what webhook events to listen for.
+*   **GitOps & In-Repo Configuration:** Platform engineers can define triggers globally, or (via strict branch protections) permit developers to define `.nova/` trigger configs in their own repositories that dynamically update the CRDs.
+*   **The "Monorepo" Superpower:** `NovaTrigger` supports advanced path filtering (`paths: ["src/**/*.go"]`). Because Nova tracks the exact `files_changed` in the normalized webhook payload, the platform natively supports massive Monorepos. If a commit touches 1 out of 50 microservices in a repo, Nova natively filters the event and only triggers the specific execution graph for that exact microservice.
+
 ### Telemetry Router
 A stateless Go daemon responsible for observing and serializing the outcomes of pipeline runs.
 *   **OTLP Consumption:** Consumes OpenTelemetry (OTLP) payloads emitted by Execution Controllers over NATS.
